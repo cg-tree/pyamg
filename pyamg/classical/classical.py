@@ -10,7 +10,7 @@ from pyamg.relaxation.smoothing import change_smoothers
 from pyamg.strength import classical_strength_of_connection, \
     symmetric_strength_of_connection, evolution_strength_of_connection, \
     distance_strength_of_connection, energy_based_strength_of_connection, \
-    algebraic_distance, affinity_distance
+    algebraic_distance, affinity_distance, pairwise_strength_of_connection
 from pyamg.classical.interpolate import direct_interpolation, classical_interpolation
 from . import split
 from .cr import CR
@@ -146,6 +146,8 @@ def _extend_hierarchy(levels, strength, CF, interpolation, keep):
         C = algebraic_distance(A, **kwargs)
     elif fn == 'affinity':
         C = affinity_distance(A, **kwargs)
+    elif fn == 'pairwise':
+        C = pairwise_strength_of_connection(A)
     elif fn is None:
         C = A
     else:

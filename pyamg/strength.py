@@ -13,12 +13,67 @@ from warnings import warn
 
 import numpy as np
 from scipy import sparse
+from scipy.sparse import csr_array
 from . import amg_core
 from .relaxation.relaxation import jacobi
 from .util.linalg import approximate_spectral_radius
 from .util.utils import (scale_rows_by_largest_entry, amalgamate, scale_rows,
                          get_block_diag, scale_columns)
 from .util.params import set_tol
+
+
+
+
+def compute_mu_reciprocal(A,i,j,si,sj):
+  aii = A[i,i]
+  ajj = A[j,j]
+  numerator = 2/( (1/aii) + (1/ajj) )
+  if (aii == si) or (ajj == sj):
+    return 0
+  denom1 = 1/((1/(aii-si)) + (1/(ajj-sj)))
+  denom2 = - ( (A[i,j] + A[j,i])/2)
+  #print(denom1,denom2)
+  denominator = denom1+denom2
+  #return numerator / denominator
+  return denominator / numerator
+
+def compute_s(A):
+  index_type = 'd'
+  s = np.empty(A.shape[0], dtype=index_type)
+  for i in range(A.shape[0]):
+    s[i] = 0
+    for j in range(A.shape[1]):
+      if j != i:
+        s[i] += (A[i,j] +A[j,i])/2
+    s[i] *= -1
+
+  return s
+'''
+in the paper small values of mu indicate high degree of connectedness
+this library assumes strength of connection matrices use large values to indicate high degree of connectedness
+
+entries in returned matrix are reciprocal of mu as defined in algorithm 4.2 form the pairwise aggregation paper
+'''
+def pairwise_strength_of_connection(A, theta=0.5):
+  if A.format != 'csr':
+    A = csr_array(A)
+  index_type = 'd'
+  s = compute_s(A)
+  mu = np.empty(A.shape, dtype=index_type)
+  sortd = []
+  for i in range(A.shape[0]):
+    for j in range(A.shape[1]):
+      mu[i,j] = compute_mu_reciprocal(A,i,j,s[i],s[j])
+      sortd.append((i,j,mu[i,j]))
+
+  sortd.sort(key =lambda x:x[2])
+  numdel = int( theta*len(sortd) )
+  for i in range(numdel):
+    a = sortd[i][0]
+    b = sortd[i][1]
+    mu[a,b] = 0
+
+  return sparse.csr_matrix(mu)
 
 
 def distance_strength_of_connection(A, V, theta=2.0, relative_drop=True):
