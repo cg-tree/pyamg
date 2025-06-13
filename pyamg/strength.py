@@ -37,6 +37,19 @@ def compute_mu_reciprocal(A,i,j,si,sj):
   #return numerator / denominator
   return denominator / numerator
 
+def get_U(A,ktg):
+  c = ktg/(ktg-2)
+  U = []
+  for i in range(A.shape[0]):
+    sm = 0
+    for j in range(A.shape[0]):
+      if j != i:
+        sm += abs(A[i,j]+A[j,i])/2
+    if (c*sm) < A[i,i]:
+      U.append(i)
+
+  return U
+
 def compute_s(A):
   index_type = 'd'
   s = np.empty(A.shape[0], dtype=index_type)
@@ -48,18 +61,8 @@ def compute_s(A):
     s[i] *= -1
 
   return s
-'''
-in the paper small values of mu indicate high degree of connectedness
-this library assumes strength of connection matrices use large values to indicate high degree of connectedness
 
-entries in returned matrix are reciprocal of mu as defined in algorithm 4.2 form the pairwise aggregation paper
-'''
-def pairwise_strength_of_connection(A, theta=0.5):
-  if A.format != 'csr':
-    A = csr_array(A)
-  index_type = 'd'
-  s = compute_s(A)
-  mu = np.empty(A.shape, dtype=index_type)
+def pairwise_soc0(A, theta=0.5):
   sortd = []
   for i in range(A.shape[0]):
     for j in range(A.shape[1]):
@@ -74,6 +77,39 @@ def pairwise_strength_of_connection(A, theta=0.5):
     mu[a,b] = 0
 
   return sparse.csr_matrix(mu)
+
+
+
+def pairwise_soc1(A,s,mu,theta):
+  U = get_U(A,theta)
+  
+  for i in U:
+    jmax = i
+    muopt = 0
+    for j in U:
+      if (i!=j) and (A[i,j]!= 0) and ((A[i,i] + A[j,j] - s[i] -s[j])>=0):
+        jmu = compute_mu_reciprocal(A,i,j,s[i],s[j])
+        if jmu > muopt:
+          muopt = jmu
+          jmax = j
+    mu[i,jmax] = muopt
+
+  return sparse.csr_matrix(mu)
+
+'''
+in the paper small values of mu indicate high degree of connectedness
+this library assumes strength of connection matrices use large values to indicate high degree of connectedness
+
+entries in returned matrix are reciprocal of mu as defined in algorithm 4.2 from the pairwise aggregation paper
+'''
+def pairwise_strength_of_connection(A, theta=0.5):
+  if A.format != 'csr':
+    A = csr_array(A)
+  index_type = 'd'
+  s = compute_s(A)
+  mu = np.zeros(A.shape, dtype=index_type)
+
+  return pairwise_soc1(A,s,mu,theta)
 
 
 def distance_strength_of_connection(A, V, theta=2.0, relative_drop=True):
