@@ -37,6 +37,18 @@ def compute_mu_reciprocal(A,i,j,si,sj):
   #return numerator / denominator
   return denominator / numerator
 
+def compute_mu(A,i,j,si,sj):
+  aii = A[i,i]
+  ajj = A[j,j]
+  numerator = 2/( (1/aii) + (1/ajj) )
+  if (aii == si) or (ajj == sj):
+    return 0
+  denom1 = 1/((1/(aii-si)) + (1/(ajj-sj)))
+  denom2 = - ( (A[i,j] + A[j,i])/2)
+  #print(denom1,denom2)
+  denominator = denom1+denom2
+  return numerator / denominator
+
 def get_U(A,ktg):
   c = ktg/(ktg-2)
   U = []
@@ -80,19 +92,27 @@ def pairwise_soc0(A, theta=0.5):
 
 
 
-def pairwise_soc1(A,s,mu,theta):
+def pairwise_soc1(A,s,mu,theta, maximize=1, reciprocal=1):
   U = get_U(A,theta)
-  
+  if reciprocal:
+    f = compute_mu_reciprocal
+  else:
+    f = compute_mu
+
   for i in U:
-    jmax = i
+    jopt = i
     muopt = 0
     for j in U:
       if (i!=j) and (A[i,j]!= 0) and ((A[i,i] + A[j,j] - s[i] -s[j])>=0):
-        jmu = compute_mu_reciprocal(A,i,j,s[i],s[j])
-        if jmu > muopt:
+        jmu = f(A,i,j,s[i],s[j])
+        if maximize and (jmu > muopt):
           muopt = jmu
-          jmax = j
-    mu[i,jmax] = muopt
+          jopt = j
+        elif not maximize and (jmu < jopt):
+          muopt = jmu
+          jopt = j
+
+    mu[i,jopt] = muopt
 
   return sparse.csr_matrix(mu)
 
@@ -102,14 +122,14 @@ this library assumes strength of connection matrices use large values to indicat
 
 entries in returned matrix are reciprocal of mu as defined in algorithm 4.2 from the pairwise aggregation paper
 '''
-def pairwise_strength_of_connection(A, theta=0.5):
+def pairwise_strength_of_connection(A, theta=0.5, maximize=1, reciprocal=1):
   if A.format != 'csr':
     A = csr_array(A)
   index_type = 'd'
   s = compute_s(A)
   mu = np.zeros(A.shape, dtype=index_type)
 
-  return pairwise_soc1(A,s,mu,theta)
+  return pairwise_soc1(A,s,mu,theta, maximize, reciprocal)
 
 
 def distance_strength_of_connection(A, V, theta=2.0, relative_drop=True):

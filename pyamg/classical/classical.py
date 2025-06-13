@@ -147,7 +147,7 @@ def _extend_hierarchy(levels, strength, CF, interpolation, keep):
     elif fn == 'affinity':
         C = affinity_distance(A, **kwargs)
     elif fn == 'pairwise':
-        C = pairwise_strength_of_connection(A)
+        C = pairwise_strength_of_connection(A, **kwargs)
     elif fn is None:
         C = A
     else:
