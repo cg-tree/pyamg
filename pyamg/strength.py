@@ -23,41 +23,30 @@ from .util.params import set_tol
 
 
 
-
-def compute_mu_reciprocal(A,i,j,si,sj):
-  aii = A[i,i]
-  ajj = A[j,j]
-  numerator = 2/( (1/aii) + (1/ajj) )
-  if (aii == si) or (ajj == sj):
+def compute_mu(aii,ajj,aij,aji,si,sj,reciprocal = 0):
+  if (aii == 0) or (ajj==0) or (aii == si) or (ajj == sj):
     return 0
+  numerator = 2/( (1/aii) + (1/ajj) )
   denom1 = 1/((1/(aii-si)) + (1/(ajj-sj)))
-  denom2 = - ( (A[i,j] + A[j,i])/2)
+  denom2 = - ( (aij + aji)/2)
   #print(denom1,denom2)
   denominator = denom1+denom2
-  #return numerator / denominator
-  return denominator / numerator
-
-def compute_mu(A,i,j,si,sj):
-  aii = A[i,i]
-  ajj = A[j,j]
-  numerator = 2/( (1/aii) + (1/ajj) )
-  if (aii == si) or (ajj == sj):
+  if numerator*denominator < 0:
     return 0
-  denom1 = 1/((1/(aii-si)) + (1/(ajj-sj)))
-  denom2 = - ( (A[i,j] + A[j,i])/2)
-  #print(denom1,denom2)
-  denominator = denom1+denom2
+
+  if reciprocal:
+    return denominator / numerator
+
   return numerator / denominator
 
-def get_U(A,ktg):
-  c = ktg/(ktg-2)
+def get_U(A,theta):
   U = []
   for i in range(A.shape[0]):
     sm = 0
     for j in range(A.shape[0]):
       if j != i:
         sm += abs(A[i,j]+A[j,i])/2
-    if (c*sm) < A[i,i]:
+    if (theta*sm) < A[i,i]:
       U.append(i)
 
   return U
@@ -92,20 +81,21 @@ def pairwise_soc0(A, theta=0.5):
 
 
 
-def pairwise_soc1(A,s,mu,theta, maximize=1, reciprocal=1):
+def pairwise_soc1(A,s,mu,theta, maximize=1, reciprocal=1, allentries=1, symmetric=0):
   U = get_U(A,theta)
-  if reciprocal:
-    f = compute_mu_reciprocal
-  else:
-    f = compute_mu
 
   for i in U:
     jopt = i
     muopt = 0
     for j in U:
       if (i!=j) and (A[i,j]!= 0) and ((A[i,i] + A[j,j] - s[i] -s[j])>=0):
-        jmu = f(A,i,j,s[i],s[j])
-        if maximize and (jmu > muopt):
+        aii = A[i,i]
+        ajj = A[j,j]
+
+        jmu = compute_mu(aii, ajj, A[i,j], A[j,i], s[i],s[j], reciprocal)
+        if allentries:
+          mu[i,j] = jmu
+        elif maximize and (jmu > muopt):
           muopt = jmu
           jopt = j
         elif not maximize and (jmu < jopt):
@@ -113,6 +103,7 @@ def pairwise_soc1(A,s,mu,theta, maximize=1, reciprocal=1):
           jopt = j
 
     mu[i,jopt] = muopt
+    mu[i,i] = 1
 
   return sparse.csr_matrix(mu)
 
@@ -125,11 +116,12 @@ entries in returned matrix are reciprocal of mu as defined in algorithm 4.2 from
 def pairwise_strength_of_connection(A, theta=0.5, maximize=1, reciprocal=1):
   if A.format != 'csr':
     A = csr_array(A)
+  Ad = A.toarray()
   index_type = 'd'
-  s = compute_s(A)
-  mu = np.zeros(A.shape, dtype=index_type)
+  s = compute_s(Ad)
+  mu = np.eye(Ad.shape[0],Ad.shape[1], dtype=index_type)
 
-  return pairwise_soc1(A,s,mu,theta, maximize, reciprocal)
+  return pairwise_soc1(Ad,s,mu,theta, maximize, reciprocal)
 
 
 def distance_strength_of_connection(A, V, theta=2.0, relative_drop=True):

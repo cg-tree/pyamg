@@ -9,7 +9,8 @@ from ..relaxation.smoothing import change_smoothers
 from ..strength import (classical_strength_of_connection,
                         symmetric_strength_of_connection, evolution_strength_of_connection,
                         distance_strength_of_connection, algebraic_distance,
-                        affinity_distance, energy_based_strength_of_connection)
+                        affinity_distance, energy_based_strength_of_connection,
+                        pairwise_strength_of_connection)
 from ..util.utils import filter_matrix_rows, asfptype
 from ..classical.interpolate import (direct_interpolation, classical_interpolation,
                                      injection_interpolation, one_point_interpolation,
@@ -172,6 +173,8 @@ def extend_hierarchy(levels, strength, CF, interpolation, restrict, filter_opera
         C = algebraic_distance(A, **kwargs)
     elif fn == 'affinity':
         C = affinity_distance(A, **kwargs)
+    elif fn == 'pairwise':
+        C = pairwise_strength_of_connection(A, **kwargs)
     elif fn is None:
         C = A
     else:
