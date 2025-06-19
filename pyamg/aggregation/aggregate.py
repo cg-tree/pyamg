@@ -6,7 +6,7 @@ import numpy as np
 from scipy import sparse
 from .. import amg_core
 from ..graph import lloyd_cluster, balanced_lloyd_cluster, metis_partition
-from ..strength import classical_strength_of_connection
+from ..strength import classical_strength_of_connection, pairwise_strength_of_connection
 
 
 def standard_aggregation(C):
@@ -178,8 +178,8 @@ def naive_aggregation(C):
     return sparse.csr_array((Tx, Tj, Tp), shape=shape), Cpts
 
 
-def pairwise_aggregation(A, matchings=2, theta=0.25,
-                         norm='min', compute_P=False):
+def pairwise_aggregation(A,C=None, matchings=1, theta=0.25,
+                         norm='min', compute_P=False, strength=None, strengthkw=None):
     """Compute the sparsity pattern of the tentative prolongator.
 
     Parameters
@@ -233,6 +233,12 @@ def pairwise_aggregation(A, matchings=2, theta=0.25,
     123-146.
 
     """
+    if (strength == 'classical'):
+      soc = classical_strength_of_connection
+    elif strength == 'pairwise':
+      soc = pairwise_strength_of_connection
+
+
     # Get SOC matrix
     if not sparse.issparse(A) or A.format not in ('bsr', 'csr'):
         try:
@@ -250,10 +256,12 @@ def pairwise_aggregation(A, matchings=2, theta=0.25,
     for i in range(0, matchings):
 
         # Compute SOC matrix for this matching
-        if sparse.issparse(A) and A.format == 'bsr':
-            C = classical_strength_of_connection(A=Ac, theta=theta, block=True, norm=norm)
-        else:
-            C = classical_strength_of_connection(A=Ac, theta=theta, block=False, norm=norm)
+        if i>0 and sparse.issparse(A) and A.format == 'bsr':
+            #C = classical_strength_of_connection(A=Ac, theta=theta, block=True, norm=norm)
+            C = soc(A=Ac, **strengthkw)
+        elif i>0:
+            #C = classical_strength_of_connection(A=Ac, theta=theta, block=False, norm=norm)
+            C = soc(A=Ac, **strengthkw)
 
         # Form pairwise aggregation matrix
         num_rows = C.shape[0]
@@ -302,7 +310,8 @@ def pairwise_aggregation(A, matchings=2, theta=0.25,
                 Ac = T_temp.T.tocsr() @ Ac @ T_temp
             else:
                 Ac = T_temp.T @ Ac @ T_temp
-
+    
+    T = sparse.csr_array(T)
     # Convert T to dtype int if only used for aggregation
     if compute_P:
         T = T.astype(A.dtype, copy=False)

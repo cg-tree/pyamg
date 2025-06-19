@@ -24,7 +24,11 @@ from .util.params import set_tol
 
 
 def compute_mu(aii,ajj,aij,aji,si,sj,reciprocal = 0):
-  if (aii == 0) or (ajj==0) or (aii == si) or (ajj == sj):
+  #large mu
+  if (aii == 0) or (ajj==0):
+    return 0
+  #small mu
+  elif (aii == si) or (ajj == sj):
     return 0
   numerator = 2/( (1/aii) + (1/ajj) )
   denom1 = 1/((1/(aii-si)) + (1/(ajj-sj)))
@@ -32,7 +36,7 @@ def compute_mu(aii,ajj,aij,aji,si,sj,reciprocal = 0):
   #print(denom1,denom2)
   denominator = denom1+denom2
   if numerator*denominator < 0:
-    return 0
+    numerator*= -1
 
   if reciprocal:
     return denominator / numerator
@@ -63,37 +67,23 @@ def compute_s(A):
 
   return s
 
-def pairwise_soc0(A, theta=0.5):
-  sortd = []
-  for i in range(A.shape[0]):
-    for j in range(A.shape[1]):
-      mu[i,j] = compute_mu_reciprocal(A,i,j,s[i],s[j])
-      sortd.append((i,j,mu[i,j]))
-
-  sortd.sort(key =lambda x:x[2])
-  numdel = int( theta*len(sortd) )
-  for i in range(numdel):
-    a = sortd[i][0]
-    b = sortd[i][1]
-    mu[a,b] = 0
-
-  return sparse.csr_matrix(mu)
 
 
-
-def pairwise_soc1(A,s,mu,theta, maximize=1, reciprocal=1, allentries=1, symmetric=0):
+def pairwise_soc1(A,s,mu,theta, maximize=1, reciprocal=1, allentries=1):
   U = get_U(A,theta)
 
-  for i in U:
+  #for i in U:
+  for i in range(A.shape[0]):
     jopt = i
     muopt = 0
-    for j in U:
+    #for j in U:
+    for j in range(A.shape[0]):
       if (i!=j) and (A[i,j]!= 0) and ((A[i,i] + A[j,j] - s[i] -s[j])>=0):
         aii = A[i,i]
         ajj = A[j,j]
 
         jmu = compute_mu(aii, ajj, A[i,j], A[j,i], s[i],s[j], reciprocal)
-        if allentries:
+        if (jmu > 0) and allentries:
           mu[i,j] = jmu
         elif maximize and (jmu > muopt):
           muopt = jmu
@@ -101,9 +91,8 @@ def pairwise_soc1(A,s,mu,theta, maximize=1, reciprocal=1, allentries=1, symmetri
         elif not maximize and (jmu < jopt):
           muopt = jmu
           jopt = j
-
-    mu[i,jopt] = muopt
-    mu[i,i] = 1
+    if muopt > 0:
+      mu[i,jopt] = muopt
 
   return sparse.csr_matrix(mu)
 
@@ -113,16 +102,41 @@ this library assumes strength of connection matrices use large values to indicat
 
 entries in returned matrix are reciprocal of mu as defined in algorithm 4.2 from the pairwise aggregation paper
 '''
-def pairwise_strength_of_connection(A, theta=0.5, maximize=1, reciprocal=1):
+def pairwise_strength_of_connection(A, theta=0.5, maximize=1, reciprocal=1,replacezeros=None,replacenonzeros=0, diff=0):
   if A.format != 'csr':
     A = csr_array(A)
   Ad = A.toarray()
   index_type = 'd'
   s = compute_s(Ad)
-  mu = np.eye(Ad.shape[0],Ad.shape[1], dtype=index_type)
+  if (replacezeros == None) or (replacezeros == '0'):
+    mu = np.eye(Ad.shape[0],Ad.shape[1], dtype=index_type)
+  elif replacezeros == '1':
+    mu = Ad.copy()
+  elif replacezeros == 'classical':
+    c = classical_strength_of_connection(A, theta=theta)
+    mu = c.toarray()
+  elif replacezeros == 'energy_based':
+    c = energy_based_strength_of_connection(A,theta=theta)
+    mu = c.toarray()
 
-  return pairwise_soc1(Ad,s,mu,theta, maximize, reciprocal)
+  mu = pairwise_soc1(Ad,s,mu,theta, maximize, reciprocal)
+ 
+  if replacenonzeros:
 
+    c = classical_strength_of_connection(A, theta=theta)
+    rows,cols = mu.nonzero()
+    for rw in rows:
+      for cl in cols:
+        mu[rw,cl] = c[rw,cl]
+
+  if diff:
+    c = classical_strength_of_connection(A, theta=theta)
+    for i in range(mu.shape[0]):
+      for j in range(mu.shape[1]):
+        if i != j:
+          mu[i,j] -= c[i,j]
+          mu[i,j] = abs(mu[i,j])
+  return mu
 
 def distance_strength_of_connection(A, V, theta=2.0, relative_drop=True):
     """Distance based strength-of-connection.

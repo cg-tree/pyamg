@@ -307,6 +307,8 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     # Compute the strength-of-connection matrix C, where larger
     # C[i,j] denote stronger couplings between i and j.
     fn, kwargs = unpack_arg(strength[len(levels)-1])
+    strength_method = fn
+    strength_kwargs = kwargs
     print(fn)
     if fn == 'symmetric':
         C = symmetric_strength_of_connection(A, **kwargs)
@@ -357,7 +359,7 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     elif fn == 'metis':
         AggOp = metis_aggregation(C, **kwargs)
     elif fn == 'pairwise':
-        AggOp = pairwise_aggregation(A, **kwargs)[0]
+        AggOp = pairwise_aggregation(A,C=C,strength=strength_method, strengthkw = strength_kwargs, **kwargs)[0]
     elif fn == 'predefined':
         AggOp = kwargs['AggOp'].tocsr()
     else:
