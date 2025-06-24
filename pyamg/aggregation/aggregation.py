@@ -256,11 +256,12 @@ def smoothed_aggregation_solver(A, B=None, BH=None,
     improve_candidates =\
         levelize_smooth_or_improve_candidates(improve_candidates, max_levels)
     smooth = levelize_smooth_or_improve_candidates(smooth, max_levels)
-    
+    ''' 
     print(strength)
     print(aggregate)
     print(improve_candidates)
     print(smooth)
+    '''
     # Construct multilevel structure
     levels = []
     levels.append(MultilevelSolver.Level())
@@ -309,7 +310,7 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     fn, kwargs = unpack_arg(strength[len(levels)-1])
     strength_method = fn
     strength_kwargs = kwargs
-    print(fn)
+    #print(fn)
     if fn == 'symmetric':
         C = symmetric_strength_of_connection(A, **kwargs)
     elif fn == 'classical':
@@ -365,7 +366,7 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     else:
         raise ValueError(f'Unrecognized aggregation method {fn!s}')
 
-    print(AggOp)
+    #print(AggOp)
     # Improve near nullspace candidates by relaxing on A B = 0
     fn, kwargs = unpack_arg(improve_candidates[len(levels)-1])
     if fn is not None:

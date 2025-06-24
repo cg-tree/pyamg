@@ -60,12 +60,12 @@ def compute_Us(A, theta):
   index_type = 'd'
 
   s = np.empty(A.shape[0], dtype=index_type)
+  diag_entries = np.empty(A.shape[0], dtype=index_type)
   rowsum = [0 for i in range(A.shape[0])]
   colsum = [0 for i in range(A.shape[0])]
   absrowsum = [0 for i in range(A.shape[0])]
   abscolsum = [0 for i in range(A.shape[0])]
   U = []
-  diag_entries = [0 for i in range(A.shape[0])]
 
   for i in range(A.shape[0]):
     row_start = A.indptr[i]
@@ -90,7 +90,7 @@ def compute_Us(A, theta):
     if diag_entries[i] > ( theta * sm ):
       U.append(i)
 
-  return U,s
+  return U,s,diag_entries
 '''
   for i in range(A.shape[0]):
     s[i] = 0
@@ -109,40 +109,49 @@ def get_csr_elem(A,i,j):
     if j not in columns:
       return 0
 
-    for k in range(row_start,row_end):
+    it =  range(row_start,row_end)
+    if i > j:
+      it = reversed(it)
+    for k in it:
       if A.indices[k] == j:
         return A.data[k]
 
-def pairwise_soc(A,U,s,mu,theta, maximize=1, reciprocal=1, allentries=1):
-
-  #for i in U:
-  for i in range(A.shape[0]):
+def pairwise_soc(A,U,s,D,mu,theta, maximize=1, reciprocal=1, allentries=1):
+  data = []
+  rowindices = []
+  colindices = []
+  for i in U:
+  #for i in range(A.shape[0]):
     jopt = i
     muopt = 0
     row_start = A.indptr[i]
     row_end = A.indptr[i+1]
 
-    aii = get_csr_elem(A,i,i)
-    #for j in U:
-    for j in range(A.shape[0]):
+    aii = D[i]
+    data.append(1)
+    rowindices.append( i )
+    colindices.append( i )
+    for j in U:
+    #for j in range(i+1, A.shape[0]):
+      ajj = D[j]
+      
       aij = get_csr_elem(A,i,j)
-      ajj = get_csr_elem(A,j,j)
       aji = get_csr_elem(A,j,i)
 
       if (i!=j) and (aij != 0) and ( (aii + ajj - s[i] -s[j]) >= 0):
 
         jmu = compute_mu(aii, ajj, aij, aji, s[i],s[j], reciprocal)
-        if (jmu > 0) and allentries:
-          mu[i,j] = jmu
-        elif maximize and (jmu > muopt):
-          muopt = jmu
-          jopt = j
-        elif not maximize and (jmu < jopt):
-          muopt = jmu
-          jopt = j
-    if muopt > 0:
-      mu[i,jopt] = muopt
+        data.append(jmu)
+        rowindices.append( i )
+        colindices.append( j )
 
+      if (i!=j) and (aji != 0) and ( (aii + ajj - s[i] -s[j]) >= 0):
+        jmu = compute_mu(ajj, aii, aji, aij, s[i],s[j], reciprocal)
+        data.append(jmu)
+        rowindices.append( j )
+        colindices.append( i )
+
+    mu = sparse.coo_matrix( (data, (rowindices, colindices) ) )
 
   return sparse.csr_matrix(mu)
       
@@ -183,10 +192,10 @@ entries in returned matrix are reciprocal of mu as defined in algorithm 4.2 from
 def pairwise_strength_of_connection(A, theta=0.5, maximize=1, reciprocal=1,replacezeros=None,replacenonzeros=0, diff=0):
   if A.format != 'csr':
     A = csr_array(A)
-  Ad = A.toarray()
-  index_type = 'd'
-  U,s = compute_Us( A, theta )
 
+  U, s, D = compute_Us( A, theta )
+
+  '''
   if (replacezeros == None) or (replacezeros == '0'):
     mu = np.eye(Ad.shape[0],Ad.shape[1], dtype=index_type)
   elif replacezeros == '1':
@@ -197,10 +206,11 @@ def pairwise_strength_of_connection(A, theta=0.5, maximize=1, reciprocal=1,repla
   elif replacezeros == 'energy_based':
     c = energy_based_strength_of_connection(A,theta=theta)
     mu = c.toarray()
-
+  '''
   #mu = pairwise_soc1(Ad,s,mu,theta, maximize, reciprocal)
-  mu = pairwise_soc(A,U,s,mu,theta, maximize, reciprocal)
+  mu = pairwise_soc(A, U, s, D, theta, maximize, reciprocal)
  
+  '''
   if replacenonzeros:
 
     c = classical_strength_of_connection(A, theta=theta)
@@ -216,6 +226,7 @@ def pairwise_strength_of_connection(A, theta=0.5, maximize=1, reciprocal=1,repla
         if i != j:
           mu[i,j] -= c[i,j]
           mu[i,j] = abs(mu[i,j])
+  '''
   return mu
 
 def distance_strength_of_connection(A, V, theta=2.0, relative_drop=True):

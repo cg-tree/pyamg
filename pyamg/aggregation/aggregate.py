@@ -6,7 +6,8 @@ import numpy as np
 from scipy import sparse
 from .. import amg_core
 from ..graph import lloyd_cluster, balanced_lloyd_cluster, metis_partition
-from ..strength import classical_strength_of_connection, pairwise_strength_of_connection
+from ..strength import classical_strength_of_connection, pairwise_strength_of_connection,\
+  symmetric_strength_of_connection, energy_based_strength_of_connection
 
 
 def standard_aggregation(C):
@@ -237,6 +238,12 @@ def pairwise_aggregation(A,C=None, matchings=1, theta=0.25,
       soc = classical_strength_of_connection
     elif strength == 'pairwise':
       soc = pairwise_strength_of_connection
+    elif strength == 'symmetric':
+      soc = symmetric_strength_of_connection
+    elif strength == 'energy_based':
+      soc = energy_based_strength_of_connection
+    else:
+      soc = classical_strength_of_connection
 
 
     # Get SOC matrix
