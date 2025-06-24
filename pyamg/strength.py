@@ -45,6 +45,7 @@ def compute_mu(aii,ajj,aij,aji,si,sj,reciprocal = 0):
 
 def get_U(A,theta):
   U = []
+
   for i in range(A.shape[0]):
     sm = 0
     for j in range(A.shape[0]):
@@ -55,19 +56,96 @@ def get_U(A,theta):
 
   return U
 
-def compute_s(A):
+def compute_Us(A, theta):
   index_type = 'd'
+
   s = np.empty(A.shape[0], dtype=index_type)
+  rowsum = [0 for i in range(A.shape[0])]
+  colsum = [0 for i in range(A.shape[0])]
+  absrowsum = [0 for i in range(A.shape[0])]
+  abscolsum = [0 for i in range(A.shape[0])]
+  U = []
+  diag_entries = [0 for i in range(A.shape[0])]
+
+  for i in range(A.shape[0]):
+    row_start = A.indptr[i]
+    row_end = A.indptr[i+1]
+    columns = A.indices[row_start:row_end]
+    for k in range(row_start,row_end):
+      j = A.indices[k]
+      e = A.data[k]
+      abse = abs(e)
+      if i != j:
+        rowsum[i] += e
+        colsum[j] += e
+        absrowsum[i] += abse
+        abscolsum[j] += abse
+      else:
+        diag_entries[i] = e
+  
+  for i in range( A.shape[0] ):
+    s[i] = (rowsum[i] + colsum[i]) / -2
+    sm = (absrowsum[i] + abscolsum[i]) / 2
+
+    if diag_entries[i] > ( theta * sm ):
+      U.append(i)
+
+  return U,s
+'''
   for i in range(A.shape[0]):
     s[i] = 0
-    for j in range(A.shape[1]):
+    for j in range(A.shape[0]):
       if j != i:
-        s[i] += (A[i,j] +A[j,i])/2
+        #s[i] += (A[i,j] +A[j,i])/2
+        s[i] += (get_csr_elem(A,i,j) + get_csr_elem(A,j,i))/2
     s[i] *= -1
 
   return s
+'''
+def get_csr_elem(A,i,j):
+    row_start = A.indptr[i]
+    row_end = A.indptr[i+1]
+    columns = A.indices[row_start:row_end]
+    if j not in columns:
+      return 0
+
+    for k in range(row_start,row_end):
+      if A.indices[k] == j:
+        return A.data[k]
+
+def pairwise_soc(A,U,s,mu,theta, maximize=1, reciprocal=1, allentries=1):
+
+  #for i in U:
+  for i in range(A.shape[0]):
+    jopt = i
+    muopt = 0
+    row_start = A.indptr[i]
+    row_end = A.indptr[i+1]
+
+    aii = get_csr_elem(A,i,i)
+    #for j in U:
+    for j in range(A.shape[0]):
+      aij = get_csr_elem(A,i,j)
+      ajj = get_csr_elem(A,j,j)
+      aji = get_csr_elem(A,j,i)
+
+      if (i!=j) and (aij != 0) and ( (aii + ajj - s[i] -s[j]) >= 0):
+
+        jmu = compute_mu(aii, ajj, aij, aji, s[i],s[j], reciprocal)
+        if (jmu > 0) and allentries:
+          mu[i,j] = jmu
+        elif maximize and (jmu > muopt):
+          muopt = jmu
+          jopt = j
+        elif not maximize and (jmu < jopt):
+          muopt = jmu
+          jopt = j
+    if muopt > 0:
+      mu[i,jopt] = muopt
 
 
+  return sparse.csr_matrix(mu)
+      
 
 def pairwise_soc1(A,s,mu,theta, maximize=1, reciprocal=1, allentries=1):
   U = get_U(A,theta)
@@ -107,7 +185,8 @@ def pairwise_strength_of_connection(A, theta=0.5, maximize=1, reciprocal=1,repla
     A = csr_array(A)
   Ad = A.toarray()
   index_type = 'd'
-  s = compute_s(Ad)
+  U,s = compute_Us( A, theta )
+
   if (replacezeros == None) or (replacezeros == '0'):
     mu = np.eye(Ad.shape[0],Ad.shape[1], dtype=index_type)
   elif replacezeros == '1':
@@ -119,7 +198,8 @@ def pairwise_strength_of_connection(A, theta=0.5, maximize=1, reciprocal=1,repla
     c = energy_based_strength_of_connection(A,theta=theta)
     mu = c.toarray()
 
-  mu = pairwise_soc1(Ad,s,mu,theta, maximize, reciprocal)
+  #mu = pairwise_soc1(Ad,s,mu,theta, maximize, reciprocal)
+  mu = pairwise_soc(A,U,s,mu,theta, maximize, reciprocal)
  
   if replacenonzeros:
 
