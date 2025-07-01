@@ -116,10 +116,12 @@ def get_csr_elem(A,i,j):
       if A.indices[k] == j:
         return A.data[k]
 
-def pairwise_soc(A,U,s,D,mu,theta, maximize=1, reciprocal=1, allentries=1):
+def pairwise_soc(A,U,s,D,theta, maximize=1, reciprocal=1, allentries=1):
   data = []
   rowindices = []
   colindices = []
+  lowerdiag_sums = [0 for i in range(A.shape[0]-1)]
+  upperdiag_sums = [0 for i in range(A.shape[0]-1)]
   for i in U:
   #for i in range(A.shape[0]):
     jopt = i
@@ -131,8 +133,8 @@ def pairwise_soc(A,U,s,D,mu,theta, maximize=1, reciprocal=1, allentries=1):
     data.append(1)
     rowindices.append( i )
     colindices.append( i )
-    for j in U:
-    #for j in range(i+1, A.shape[0]):
+    #for j in U:
+    for j in range(i+1, A.shape[0]):
       ajj = D[j]
       
       aij = get_csr_elem(A,i,j)
@@ -144,16 +146,19 @@ def pairwise_soc(A,U,s,D,mu,theta, maximize=1, reciprocal=1, allentries=1):
         data.append(jmu)
         rowindices.append( i )
         colindices.append( j )
+        upperdiag_sums[j-i-1] += jmu
+      
 
       if (i!=j) and (aji != 0) and ( (aii + ajj - s[i] -s[j]) >= 0):
         jmu = compute_mu(ajj, aii, aji, aij, s[i],s[j], reciprocal)
         data.append(jmu)
         rowindices.append( j )
         colindices.append( i )
+        lowerdiag_sums[j-i-1] += jmu
 
     mu = sparse.coo_matrix( (data, (rowindices, colindices) ) )
 
-  return sparse.csr_matrix(mu)
+  return mu, upperdiag_sums, lowerdiag_sums
       
 
 def pairwise_soc1(A,s,mu,theta, maximize=1, reciprocal=1, allentries=1):
@@ -189,7 +194,7 @@ this library assumes strength of connection matrices use large values to indicat
 
 entries in returned matrix are reciprocal of mu as defined in algorithm 4.2 from the pairwise aggregation paper
 '''
-def pairwise_strength_of_connection(A, theta=0.5, maximize=1, reciprocal=1,replacezeros=None,replacenonzeros=0, diff=0):
+def pairwise_strength_of_connection(A, theta=0.5, maximize=1, reciprocal=1,replacezeros=0,replacenonzeros=0, diff=0):
   if A.format != 'csr':
     A = csr_array(A)
 
@@ -208,8 +213,23 @@ def pairwise_strength_of_connection(A, theta=0.5, maximize=1, reciprocal=1,repla
     mu = c.toarray()
   '''
   #mu = pairwise_soc1(Ad,s,mu,theta, maximize, reciprocal)
-  mu = pairwise_soc(A, U, s, D, theta, maximize, reciprocal)
- 
+  mu,uppersums,lowersums = pairwise_soc(A, U, s, D, theta, maximize, reciprocal)
+  if replacezeros:
+    mu =mu.todia()
+    for k in range(0,replacezeros):
+      j = k+1
+      upper = mu.diagonal(j)
+      lower = mu.diagonal(-j)
+
+      repu = uppersums[k]/(len(upper) )
+      repl = lowersums[k]/(len(lower) )
+      for i in range(len(upper)):
+        if upper[i] == 0:
+          upper[i] = repu 
+        if lower[i] == 0:
+          lower[i] = repl 
+      mu.setdiag(upper,j)
+      mu.setdiag(lower,-j)
   '''
   if replacenonzeros:
 
@@ -227,7 +247,7 @@ def pairwise_strength_of_connection(A, theta=0.5, maximize=1, reciprocal=1,repla
           mu[i,j] -= c[i,j]
           mu[i,j] = abs(mu[i,j])
   '''
-  return mu
+  return sparse.csr_matrix(mu)
 
 def distance_strength_of_connection(A, V, theta=2.0, relative_drop=True):
     """Distance based strength-of-connection.
