@@ -181,6 +181,7 @@ def pairwise_soc(A,U,s,D,theta,replacezeros = 0,smooth=0):
         undefined_entry_count += 1
         mu.data[kupper] = 0
         mu.data[klower] = 0
+
   if undefined_entry_count > A.indptr[A.shape[0] ]/2: 
     warn('Pairwise SOC has > 50% undefined entries', sparse.SparseEfficiencyWarning)
   return mu
