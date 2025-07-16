@@ -39,7 +39,7 @@ def compute_mu(aii,ajj,aij,aji,si,sj,reciprocal = 1):
   if reciprocal:
     return ( c - d ) / ( 2 * b )
 
-  return ( 2 * b ) / ( c - d )
+  return 1 - (( 2 * b ) / ( c - d ))
 
 def get_U(A,theta):
   U = []
@@ -88,7 +88,7 @@ def compute_Us(A, theta):
     s[i] = -s[i]/2
     sm = (absrowsum[i] + abscolsum[i]) / 2
 
-    if( A.indices[diag_indices[i]] == i ) and ( A.data[diag_indices[i]] > ( theta * sm ) ):
+    if( A.indices[diag_indices[i]] == i ) and ( A.data[diag_indices[i]] < ( theta * sm ) ):
       U.append(i)
     else:
       notU.append(i)
@@ -119,7 +119,7 @@ def get_csr_elem(A,i,j):
       if A.indices[k] == j:
         return A.data[k]
 
-def pairwise_soc(A,U,s,D, notU, replacezeros = 0,smooth=0):
+def pairwise_soc(A,U,s,D, notU, replacezeros = 0,smooth=0,reciprocal=1):
   '''
   soc should have sparsity of A so initialize with mu=A
   '''
@@ -137,6 +137,11 @@ def pairwise_soc(A,U,s,D, notU, replacezeros = 0,smooth=0):
   #for i in range(A.shape[0]):
     row_starti = A.indptr[i]
     row_endi = A.indptr[i+1]
+
+    for k in range(row_starti,D[i]):
+
+      if mu.indices[k] in notU:
+        mu.data[k] = 0
 
     aii = A.data[D[i]]
     mu.data[D[i]] = 1
@@ -180,15 +185,16 @@ def pairwise_soc(A,U,s,D, notU, replacezeros = 0,smooth=0):
       
       mu_nonzero = mu_nonzero and (aii + ajj - si - sj >= 0)
 
-      mu_k = compute_mu( aii, ajj, aij, aji, si,sj )
+      mu_k = compute_mu( aii, ajj, aij, aji, si,sj , reciprocal=reciprocal)
 
+      ssum = abs(si)+abs(sj)
       if mu_nonzero and ( mu_k != 0 ):
 
         #mu.data[kupper] = compute_mu(aii, ajj, aij, aji, s[i],s[j] )
       
         #mu.data[klower] = compute_mu(ajj, aii, aji, aij, s[j],s[i] )
-        mu.data[kupper] = abs( mu_k )
-        mu.data[klower] = abs( mu_k )
+        mu.data[kupper] = abs( mu_k /ssum)
+        mu.data[klower] = abs( mu_k /ssum)
 
       elif smooth:
         undefined_entry_count += 1
@@ -205,9 +211,15 @@ def pairwise_soc(A,U,s,D, notU, replacezeros = 0,smooth=0):
         mu.data[kupper] = 0
         mu.data[klower] = 0
 
+      if j in notU:
+        mu.data[kupper] = 0
+
       ''' reset value if klower doesn't point to elem j,i '''
       if resetlower:
         mu.data[klower] = mulower
+
+      if mu.indices[klower] in notU:
+        mu.data[klower] = 0
 
   if undefined_entry_count > A.indptr[A.shape[0] ]/2: 
     warn('Pairwise SOC has > 50% undefined entries', sparse.SparseEfficiencyWarning)
@@ -247,59 +259,12 @@ this library assumes strength of connection matrices use large values to indicat
 
 entries in returned matrix are reciprocal of mu as defined in algorithm 4.2 from the pairwise aggregation paper
 '''
-def pairwise_strength_of_connection(A, theta=0.5, maximize=1, reciprocal=1,replacezeros=0,replacenonzeros=0, diff=0,smooth=0):
+def pairwise_strength_of_connection(A, theta=0.5, reciprocal=1,replacezeros=0,smooth=0):
   if A.format != 'csr':
     A = csr_array(A)
   A.sort_indices()
   U, s, D, notU = compute_Us( A, theta )
-  return pairwise_soc(A,U,s,D,notU, replacezeros,smooth)
-'''
-  if (replacezeros == None) or (replacezeros == '0'):
-    mu = np.eye(Ad.shape[0],Ad.shape[1], dtype=index_type)
-  elif replacezeros == '1':
-    mu = Ad.copy()
-  elif replacezeros == 'classical':
-    c = classical_strength_of_connection(A, theta=theta)
-    mu = c.toarray()
-  elif replacezeros == 'energy_based':
-    c = energy_based_strength_of_connection(A,theta=theta)
-    mu = c.toarray()
-  #mu = pairwise_soc1(Ad,s,mu,theta, maximize, reciprocal)
-  mu,uppersums,lowersums = pairwise_soc(A, U, s, D, theta, maximize, reciprocal,replacezeros=replacezeros )
-  if replacezeros:
-    mu =mu.todia()
-    for k in range(0,replacezeros):
-      j = k+1
-      upper = mu.diagonal(j)
-      lower = mu.diagonal(-j)
-
-      repu = uppersums[k]/(len(upper) )
-      repl = lowersums[k]/(len(lower) )
-      for i in range(len(upper)):
-        if upper[i] == 0:
-          upper[i] = repu 
-        if lower[i] == 0:
-          lower[i] = repl 
-      mu.setdiag(upper,j)
-      mu.setdiag(lower,-j)
-  if replacenonzeros:
-
-    c = classical_strength_of_connection(A, theta=theta)
-    rows,cols = mu.nonzero()
-    for rw in rows:
-      for cl in cols:
-        mu[rw,cl] = c[rw,cl]
-
-  if diff:
-    c = classical_strength_of_connection(A, theta=theta)
-    for i in range(mu.shape[0]):
-      for j in range(mu.shape[1]):
-        if i != j:
-          mu[i,j] -= c[i,j]
-          mu[i,j] = abs(mu[i,j])
-  return sparse.csr_matrix(mu)
-
-'''
+  return pairwise_soc(A,U,s,D,notU, replacezeros=replacezeros,smooth=smooth,reciprocal=reciprocal)
 
 
 
