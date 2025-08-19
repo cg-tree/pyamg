@@ -5,7 +5,7 @@ from warnings import warn
 import numpy as np
 from scipy import sparse
 from .. import amg_core
-from ..graph import lloyd_cluster, balanced_lloyd_cluster, metis_partition
+from ..graph import lloyd_cluster
 from ..strength import classical_strength_of_connection
 
 
