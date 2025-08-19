@@ -12,8 +12,7 @@ from pyamg.util.utils import eliminate_diag_dom_nodes, get_blocksize, asfptype, 
 from pyamg.strength import classical_strength_of_connection, \
     symmetric_strength_of_connection, evolution_strength_of_connection, \
     energy_based_strength_of_connection, distance_strength_of_connection, \
-    algebraic_distance, affinity_distance, pairwise_strength_of_connection
-
+    algebraic_distance, affinity_distance
 from .aggregate import standard_aggregation, naive_aggregation,\
     lloyd_aggregation, balanced_lloyd_aggregation,\
     metis_aggregation, pairwise_aggregation
@@ -22,6 +21,7 @@ from .smooth import jacobi_prolongation_smoother, \
     richardson_prolongation_smoother, energy_prolongation_smoother
 
 from ..relaxation.utils import relaxation_as_linear_operator
+
 
 def smoothed_aggregation_solver(A, B=None, BH=None,
                                 symmetry='hermitian', strength='symmetric',
@@ -256,12 +256,7 @@ def smoothed_aggregation_solver(A, B=None, BH=None,
     improve_candidates =\
         levelize_smooth_or_improve_candidates(improve_candidates, max_levels)
     smooth = levelize_smooth_or_improve_candidates(smooth, max_levels)
-    ''' 
-    print(strength)
-    print(aggregate)
-    print(improve_candidates)
-    print(smooth)
-    '''
+
     # Construct multilevel structure
     levels = []
     levels.append(MultilevelSolver.Level())
@@ -308,9 +303,6 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     # Compute the strength-of-connection matrix C, where larger
     # C[i,j] denote stronger couplings between i and j.
     fn, kwargs = unpack_arg(strength[len(levels)-1])
-    strength_method = fn
-    strength_kwargs = kwargs
-    #print(fn)
     if fn == 'symmetric':
         C = symmetric_strength_of_connection(A, **kwargs)
     elif fn == 'classical':
@@ -330,8 +322,6 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
         C = algebraic_distance(A, **kwargs)
     elif fn == 'affinity':
         C = affinity_distance(A, **kwargs)
-    elif fn == 'pairwise':
-        C = pairwise_strength_of_connection(A, **kwargs)
     elif fn is None:
         C = A.tocsr()
     else:
@@ -360,13 +350,12 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     elif fn == 'metis':
         AggOp = metis_aggregation(C, **kwargs)
     elif fn == 'pairwise':
-        AggOp = pairwise_aggregation(A,C=C,strength=strength_method, strengthkw = strength_kwargs, **kwargs)[0]
+        AggOp = pairwise_aggregation(A, **kwargs)[0]
     elif fn == 'predefined':
         AggOp = kwargs['AggOp'].tocsr()
     else:
         raise ValueError(f'Unrecognized aggregation method {fn!s}')
 
-    #print(AggOp)
     # Improve near nullspace candidates by relaxing on A B = 0
     fn, kwargs = unpack_arg(improve_candidates[len(levels)-1])
     if fn is not None:
