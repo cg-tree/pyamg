@@ -13,12 +13,254 @@ from warnings import warn
 
 import numpy as np
 from scipy import sparse
+from scipy.sparse import csr_array
 from . import amg_core
 from .relaxation.relaxation import jacobi
 from .util.linalg import approximate_spectral_radius
 from .util.utils import (scale_rows_by_largest_entry, amalgamate, scale_rows,
                          get_block_diag, scale_columns)
 from .util.params import set_tol
+
+
+
+def compute_mu(aii,ajj,aij,aji,si,sj,reciprocal = 1):
+  
+  if (aii == 0) or (ajj==0):
+    return 0
+  elif (aii + ajj - si - sj) == 0:
+    return 0
+  b = ( aii * ajj ) / ( aii + ajj )
+  c = (( aii - si )*( ajj - sj )) / ( aii + ajj - si - sj )
+  d = ( aji + aij )/2
+
+  if ( (c-d) == 0 ) or (b == 0):
+    return 0
+
+  if reciprocal:
+    return ( c - d ) / ( 2 * b )
+
+  return ( 2 * b ) / ( c - d )
+
+def get_U(A,theta):
+  U = []
+
+  for i in range(A.shape[0]):
+    sm = 0
+    for j in range(A.shape[0]):
+      if j != i:
+        sm += abs(A[i,j]+A[j,i])/2
+    if (theta*sm) < A[i,i]:
+      U.append(i)
+
+  return U
+
+def compute_Us(A, theta):
+  index_type = 'd'
+
+  s = np.empty(A.shape[0], dtype=index_type)
+  diag_indices = [0 for i in range(A.shape[0])]
+  
+  ''' sums exclude the diagonal entries '''
+  rowsum = [0 for i in range(A.shape[0])]
+  colsum = [0 for i in range(A.shape[0])]
+  absrowsum = [0 for i in range(A.shape[0])]
+  abscolsum = [0 for i in range(A.shape[0])]
+  U = []
+  notU = []
+  for i in range(A.shape[0]):
+    row_start = A.indptr[i]
+    row_end = A.indptr[i+1]
+    columns = A.indices[row_start:row_end]
+    for k in range(row_start,row_end):
+      j = A.indices[k]
+      e = A.data[k]
+      abse = abs(e)
+      if i != j:
+        rowsum[i] += e
+        colsum[j] += e
+        absrowsum[i] += abse
+        abscolsum[j] += abse
+      else:
+        diag_indices[i] = k
+  
+  for i in range( A.shape[0] ):
+    s[i] = (rowsum[i] + colsum[i])
+    s[i] = -s[i]/2
+    sm = (absrowsum[i] + abscolsum[i]) / 2
+
+    if( A.indices[diag_indices[i]] == i ) and ( A.data[diag_indices[i]] < ( theta * sm ) ):
+      U.append(i)
+    else:
+      notU.append(i)
+
+  return U,s,diag_indices,notU
+
+
+def get_csr_elem(A,i,j):
+    row_start = A.indptr[i]
+    row_end = A.indptr[i+1]
+    columns = A.indices[row_start:row_end]
+    if j not in columns:
+      return 0
+
+    it =  range(row_start,row_end)
+    if i > j:
+      it = reversed(it)
+    for k in it:
+      if A.indices[k] == j:
+        return A.data[k]
+
+def pairwise_soc(A,U,s,D, notU, ktg, replacezeros = 0,smooth=0,reciprocal=1):
+  '''
+  soc should have sparsity of A so initialize with mu=A
+  '''
+  mu = A.copy()
+  undefined_entry_count = 0
+
+  ''' zero out columns not in U and set diagonal entries to 1'''
+  for i in notU:
+    row_starti = mu.indptr[i]
+    row_endi = mu.indptr[i+1]
+    for k in range(row_starti, row_endi):
+      mu.data[k] = 0
+    if mu.indices[D[i]] == i:
+      mu.data[D[i]]=1
+
+  for i in U:
+  #for i in range(A.shape[0]):
+    row_starti = A.indptr[i]
+    row_endi = A.indptr[i+1]
+
+    for k in range(row_starti,D[i]):
+
+      if mu.indices[k] in notU:
+        mu.data[k] = 0
+
+    aii = A.data[D[i]]
+    mu.data[D[i]] = 1
+    si = s[i]
+    '''
+    this loop is unrolled
+    we find mu(i,j) and mu(j,i)
+    '''
+    for kupper in range(D[i]+1, row_endi):
+      
+      j = A.indices[kupper]
+      sj = s[j]
+
+      row_startj = A.indptr[j]
+      row_endj = A.indptr[j+1]
+
+      '''find index of aji'''      
+      klower = row_startj
+      '''note if D[j] is zero then ajj is not present in A'''
+      while (A.indices[klower] < i) and (klower < D[j] ):
+        klower += 1
+      
+      ''' aji = aji or 0 '''
+      mulower = mu.data[klower]
+      resetlower = 0
+      if A.indices[klower] == i:
+        aji = A.data[klower]
+        ajj = A.data[D[j]]
+        mu.data[D[j]] = 1
+
+      else:
+        aji = 0
+        ajj = 0
+        resetlower = 1
+        
+
+      aij = A.data[kupper]
+
+      ''' condition from the pairwise aggregation paper '''
+      mu_nonzero =  (aji != 0) and (aij!=0)
+      
+      mu_nonzero = mu_nonzero and (aii + ajj - si - sj >= 0)
+
+      mu_k = compute_mu( aii, ajj, aij, aji, si,sj , reciprocal=reciprocal)
+
+      ssum = abs(si)+abs(sj)
+      if mu_nonzero and ( mu_k != 0 ):
+
+        #mu.data[kupper] = compute_mu(aii, ajj, aij, aji, s[i],s[j] )
+      
+        #mu.data[klower] = compute_mu(ajj, aii, aji, aij, s[j],s[i] )
+        mu.data[kupper] = abs( mu_k /ssum)
+        mu.data[klower] = abs( mu_k /ssum)
+
+      elif smooth:
+        undefined_entry_count += 1
+        mu.data[kupper] = abs( mu.data[kupper] + mu_k ) / 2
+        mu.data[klower] = abs( mu.data[klower] + mu_k ) / 2
+
+      elif replacezeros:
+        undefined_entry_count += 1
+        mu.data[kupper] = abs( mu.data[kupper] / si)
+        mu.data[klower] = abs( mu.data[klower] / sj)
+      
+      else:
+        undefined_entry_count += 1
+        mu.data[kupper] = 0
+        mu.data[klower] = 0
+
+      if j in notU:
+        mu.data[kupper] = 0
+
+      ''' reset value if klower doesn't point to elem j,i '''
+      if resetlower:
+        mu.data[klower] = mulower
+
+      if mu.indices[klower] in notU:
+        mu.data[klower] = 0
+
+  if undefined_entry_count > A.indptr[A.shape[0] ]/2: 
+    warn('Pairwise SOC has > 50% undefined entries', sparse.SparseEfficiencyWarning)
+  return mu
+      
+
+def pairwise_soc1(A,s,mu,theta, maximize=1, reciprocal=1, allentries=1):
+  U = get_U(A,theta)
+
+  #for i in U:
+  for i in range(A.shape[0]):
+    jopt = i
+    muopt = 0
+    #for j in U:
+    for j in range(A.shape[0]):
+      if (i!=j) and (A[i,j]!= 0) and ((A[i,i] + A[j,j] - s[i] -s[j])>=0):
+        aii = A[i,i]
+        ajj = A[j,j]
+
+        jmu = compute_mu(aii, ajj, A[i,j], A[j,i], s[i],s[j], reciprocal)
+        if (jmu > 0) and allentries:
+          mu[i,j] = jmu
+        elif maximize and (jmu > muopt):
+          muopt = jmu
+          jopt = j
+        elif not maximize and (jmu < jopt):
+          muopt = jmu
+          jopt = j
+    if muopt > 0:
+      mu[i,jopt] = muopt
+
+  return sparse.csr_matrix(mu)
+
+'''
+in the paper small values of mu indicate high degree of connectedness
+this library assumes strength of connection matrices use large values to indicate high degree of connectedness
+
+entries in returned matrix are reciprocal of mu as defined in algorithm 4.2 from the pairwise aggregation paper
+'''
+def pairwise_strength_of_connection(A, theta=0.5, reciprocal=1,replacezeros=0,smooth=0):
+  if A.format != 'csr':
+    A = csr_array(A)
+  A.sort_indices()
+  U, s, D, notU = compute_Us( A, 1+theta )
+  # 1+theta = ktg/ (ktg-2)
+  ktg = 2*( (1+theta) / theta)
+  return pairwise_soc(A,U,s,D,notU, ktg, replacezeros=replacezeros,smooth=smooth,reciprocal=reciprocal)
+
 
 
 def distance_strength_of_connection(A, V, theta=2.0, relative_drop=True):
