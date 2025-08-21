@@ -282,9 +282,9 @@ strength = cs
 
 for theta in np.arange(thetamin,thetamax,thetainc):
   for replace in range(replacezerosmin, replacezerosmax):
-    #strength.append( ('pairwise',{'theta':theta,'replacezeros':replace,'smooth':0}) )
+    strength.append( ('pairwise',{'theta':theta,'replacezeros':replace,'smooth':0}) )
     #strength.append( ('pairwise',{'theta':theta,'replacezeros':0,'smooth':1},'classical',{'theta':theta}) )
-    #strength.append( ('pairwise',{'theta':theta,'replacezeros':0,'smooth':1}))
+    strength.append( ('pairwise',{'theta':theta,'replacezeros':0,'smooth':1}))
     strength.append(('pairwise',{'theta':theta,'replacezeros':0,'smooth':0}) )
     #strength.append( ('classical',{'theta':theta}, 'pairwise',{'theta':theta,'replacezeros':0,'smooth':0}) )
 
@@ -300,7 +300,7 @@ ml = []
 argvec = []
 if solverid == 0:
   for s in strength:
-    for agg in aggregates[:1]:
+    for agg in aggregates[:2]:
       for smooth in smoothers[:1]: 
         kwargs = {'strength':s,'aggregate':agg, 'keep':1}
         argvec.append(kwargs)
