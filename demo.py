@@ -8,6 +8,9 @@ import matplotlib.pyplot as plt
 from scipy.sparse.linalg import cg
 from scipy import sparse
 from pyamg import strength
+import time
+import threading
+import os
 
 def show_levels(ml, name = None, lenres = None):
 
@@ -156,9 +159,10 @@ def plot_residuals(res, title = None):
 
   plot(plt)
 
-def test_diffusion(hier,n, eps,theta,epsmax = 0,epsinc = 1, thetamax= 0, thetainc=1):
+
+def setup_test_diffusion(hier,zzz,n, eps,theta,epsmax = 0,epsinc = 1, thetamax= 0, thetainc=1):
   solver = hier[0]
-  argvec = hier[1]
+  kwargs = hier[1]
   
   solves =[ [] for i in range(len(argvec))]
   T = [t for t in np.arange(theta,thetamax,thetainc)]
@@ -166,55 +170,85 @@ def test_diffusion(hier,n, eps,theta,epsmax = 0,epsinc = 1, thetamax= 0, thetain
   x = []
   y = []
   z = []
-  zzz = dict()
+  #zzz = dict()
+  stenciltime = 0
+  hiertime = 0
+  ml = []
   for t in T:
     for e in E:
+      t0 = time.perf_counter()
       stencil = pyamg.gallery.diffusion_stencil_2d(type='FE', epsilon=e, theta=np.pi /t)
       A = pyamg.gallery.stencil_grid(stencil, (n, n), format='csr')
-      ml = []
-      names = []
+      t1 = time.perf_counter()
+      stenciltime += t1-t0
       keys = list(zzz)
 
-      for kwargs in argvec:
-        ml.append( solver( A, **kwargs ) )
-        if str(kwargs) not in keys:
-          zzz[str(kwargs)] = {'iter':[],'complexity':[],'cost':[]}
-        names.append( str( kwargs ) )
-
-
-      res = [[]for i in range(len(ml))]
-      [ml[i].solve(b, tol=tolerance, residuals=res[i]) for i in range(len(ml))]
+      t0 = time.perf_counter()
+      ml.append( solver( A, **kwargs ) )
+      if str(kwargs) not in keys:
+        zzz[str(kwargs)] = {'iter':[],'complexity':[],'cost':[],'color':[]}
+      name = str( kwargs )
+      t1 = time.perf_counter()
+      hiertime += t1-t0
       x.append(t)
       y.append(e)
-      z.append(len(res[-1]))
-      [zzz[names[i]]['iter'].append(len(res[i])) for i in range(len(names))]
-      [zzz[names[i]]['complexity'].append(ml[i].cycle_complexity()) for i in range(len(names))]
-      [zzz[names[i]]['cost'].append(zzz[names[i]]['iter'][-1]*zzz[names[i]]['complexity'][-1]) for i in range(len(names))]
-      title = names[-1]
+  print(f"stenciltime {stenciltime}")
+  print(f"hiertime {hiertime }")
+  
+  return name, ml,x,y,zzz
 
-      solves.append( (names, ml, res, "Diffusion eps={} theta=pi/{}".format(e,t)) )
-  for name in list(zzz):
+def test_diffusion(name,ml,x,y,zzz):
+  solvetime = 0
+  res = [[]for i in range(len(ml))]
+  for i in range(len(x)):
+
+      t0 = time.perf_counter()
+      ml[i].solve(b, tol=tolerance, residuals=res[i])
+      
+      t1 = time.perf_counter()
+      solvetime += t1-t0
+      #x.append(t)
+      #y.append(e)
+      #z.append(len(res[-1]))
+      
+      zzz[name]['iter'].append(len(res[i]))
+      if zzz[name]['iter'][-1]<100:
+        zzz[name]['color'].append("blue")
+      elif zzz[name]['iter'][-1]>=100:
+        zzz[name]['color'].append("red")
+      zzz[name]['complexity'].append(ml[i].cycle_complexity())
+      zzz[name]['cost'].append(zzz[name]['iter'][-1]*zzz[name]['complexity'][-1])
+
+  print(f"solvetime {solvetime }")
+  return x,y,zzz
+
+def plot_diffusion_test(name,ml,x,y,zzz):
     zlabel = 'cost'
     z = zzz[name][zlabel]
+    color = zzz[name]['color']
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
-    ax.scatter(x,y,z)
+    print(len(ml))
+    print(len(x))
+    print(len(y))
+    print(len(z))
+    ax.scatter(x,y,z,color=color)
     #surf = ax.plot_surface(x, y, z, cmap=cm.coolwarm,
     #                       linewidth=0, antialiased=False)
     ax.set_xlabel('diffusion theta')
     ax.set_ylabel('diffusion epsilon')
     ax.set_zlabel(zlabel)
-
+    pieces = name.split(' ')
+    name = '\n'.join(pieces)
     plt.title(name)
     plt.show()
 
   
-  return solves
 
 # ------------------------------------------------------------------
 # Step 2: setup up the system using pyamg.gallery
 # ------------------------------------------------------------------
-n = 20
+n = 40
 X, Y = np.meshgrid(np.linspace(0, 1, n), np.linspace(0, 1, n))
 
 #set problem
@@ -247,9 +281,9 @@ solver = solvers[solverid]
 #set tolerance
 tolerance = 1e-10
 #set threshold value
-theta =1- 0.001
+theta =0.5
 thetamin = theta
-thetainc = 1
+thetainc = 0.5
 thetamax = 1
 
 replacezerosmin = 1
@@ -282,9 +316,9 @@ strength = cs
 
 for theta in np.arange(thetamin,thetamax,thetainc):
   for replace in range(replacezerosmin, replacezerosmax):
-    strength.append( ('pairwise',{'theta':theta,'replacezeros':replace,'smooth':0}) )
+    #strength.append( ('pairwise',{'theta':theta,'replacezeros':replace,'smooth':0}) )
     #strength.append( ('pairwise',{'theta':theta,'replacezeros':0,'smooth':1},'classical',{'theta':theta}) )
-    strength.append( ('pairwise',{'theta':theta,'replacezeros':0,'smooth':1}))
+    #strength.append( ('pairwise',{'theta':theta,'replacezeros':0,'smooth':1}))
     strength.append(('pairwise',{'theta':theta,'replacezeros':0,'smooth':0}) )
     #strength.append( ('classical',{'theta':theta}, 'pairwise',{'theta':theta,'replacezeros':0,'smooth':0}) )
 
@@ -300,20 +334,22 @@ ml = []
 argvec = []
 if solverid == 0:
   for s in strength:
-    for agg in aggregates[:2]:
+    for agg in aggregates[:1]:
       for smooth in smoothers[:1]: 
         kwargs = {'strength':s,'aggregate':agg, 'keep':1}
-        argvec.append(kwargs)
         '''kwargs = {'strength':s,'aggregate':agg,
                   'presmoother':smooth,
                   'postsmoother':smooth,'keep':1}
+
         '''
+        argvec.append(kwargs)
         names.append( str( kwargs ) )
         #print(kwargs)
         #ml.append( solver( A,B, **kwargs ) )
 elif solverid == 1:
   for s in strength:
     kwargs = {'strength':s, 'keep':1}
+    argvec.append(kwargs)
     names.append( str( kwargs ) )
     print(kwargs)
     ml.append( solver( A, **kwargs ) )
@@ -328,7 +364,6 @@ else:
 
 
   ml = [ml1,ml2,ml3,ml4,ml5,ml6]
-hier = (solver, argvec)
 # ------------------------------------------------------------------
 # Step 4: solve the system
 # ------------------------------------------------------------------
@@ -336,10 +371,23 @@ hier = (solver, argvec)
 #x = [ml[i].solve(b, tol=tolerance, residuals=res[i]) for i in range(len(ml))]
 diffusion =1
 if diffusion:
-  X = test_diffusion(hier, n, 0,np.pi/9, 0.1,0.001, np.pi,np.pi/9)
+  solve = []
+  threads = []
+  zzz = dict()
+  for arg in argvec:
+    hier = (solver,arg)
+    solve.append( setup_test_diffusion(hier,zzz, n, 0,np.pi/9, 0.1,0.001, np.pi,np.pi/9) )
+    threads.append(threading.Thread(target=test_diffusion, args=solve[-1]))
+    threads[-1].start()
+    #test_diffusion(ml,x,y,zzz)
+  #[t.start() for t in threads]
+  for t in range(len(threads)):
+    threads[t].join()
+    plot_diffusion_test(*solve[t])
 else:
   X = [(names,ml,res,"title")]
-# ------------------------------------------------------------------
+
+input("press enter to exit")# ------------------------------------------------------------------
 # Step 5: print details
 # ------------------------------------------------------------------
 for x in X:
