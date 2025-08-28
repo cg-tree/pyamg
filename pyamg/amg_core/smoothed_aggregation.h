@@ -14,6 +14,228 @@
 
 
 /*
+ * Compute pairwise measure of connectivity
+ * this is the reciprocal of the value mu from the pairwise
+ * aggregation paper
+ */
+double compute_pairwise_connectivity(double aii,
+    double ajj,
+    double aij,
+    double aji,
+    double si,
+    double sj){
+  if ((aii == 0)&&(ajj == 0)){ return 0;}
+  else if ((aii + ajj -si - sj <= 0)){ return 0;}
+  double b = (aii * ajj) / (aii + ajj);
+  double c = ((aii - si)*(ajj-sj))/(aii+ajj);
+  double d = (aji + aij)/2;
+  if ( ((c-d)== 0)|| (b==0) ){ return 0;}
+  return (c-d)/(2*b);
+}
+
+template<class I, class T, class F>
+int compute_pairwise_U_s(const I n_row,
+                                      const F theta,
+                                      const I Ap[], const int Ap_size,
+                                      const I Aj[], const int Aj_size,
+                                      const T Ax[], const int Ax_size,
+                                            I U[], const int U_size,
+                                            I D[], const int D_size,
+                                            T s[], const int s_size,
+                                            T rowsum[], const int rowsum_size,
+                                            T colsum[], const int colsum_size,
+                                            T absrowsum[], const int absrowsum_size,
+                                            T abscolsum[], const int abscolsum_size){
+  //compute entries of s and find indices of diagonal elements
+  for (int i =0; i< n_row; ++i){
+    int row_start = Ap[i];
+    int row_end = Ap[i+1];
+
+    for (int k = row_start; k<row_end;++k){
+      int j = Aj[k];//column
+      double d = Ax[k];//data
+      double absd = d;
+      int signd = d<0;
+      switch (signd){
+        case 1:
+          absd *= -1;
+        case 0:
+          break;
+      }
+      int diag = i != j;
+      switch (diag){
+        case 1:
+          rowsum[i] += d;
+          colsum[j] += d;
+          absrowsum[i] += absd;
+          abscolsum[j] += absd;
+          break;
+        case 0:
+          D[i] = k;
+      } 
+    }
+  }
+
+  //fill in U along the main diagonal
+  for (int i =0; i< n_row; ++i){
+    s[i] = (rowsum[i] + colsum[i])/-2;
+    double sm = (absrowsum[i] + abscolsum[i])/2;
+    char uk = Ax[int(D[i])] < (theta * sm);
+    U[D[i]] = uk;
+  }
+
+  //fill in remaining entries of U
+  for (int i =0; i< n_row; ++i){
+    int row_start = Ap[i];
+    int row_end = Ap[i+1];
+
+    for (int k = row_start; k<row_end;++k){
+      int j = Aj[k];//column
+      U[k] = U[(int)D[i]] && U[(int)D[j]]; 
+    }
+  }
+
+  return 0;
+}
+
+/*
+ * Compute pairwise strength of connection.
+ *
+ * Compute a strength of connection matrix using the connectivity
+ * measure from pairwise aggregation.  Both the input and output
+ * matrices are stored in CSR format.
+ *
+ * consider implementing this
+ *"""
+ * A nonzero connection A[i,j] is considered
+ * strong if:
+ *
+ *     abs(A[i,j]) >= theta * sqrt( abs(A[i,i]) * abs(A[j,j]) ) 
+ *     symmetric soc not pairwise^
+ *"""
+ * The strength of connection matrix S is simply the set of nonzero entries
+ * of A that qualify as strong connections. (this is true of all soc matrices?)
+ *
+ * Parameters
+ * ----------
+ * num_rows : int
+ *     Number of rows in A.
+ * theta : float
+ *     Strength of connection tolerance.
+ * Ap : array
+ *     CSR row pointer.
+ * Aj : array
+ *     CSR index array.
+ * Ax : array
+ *     CSR data array.
+ * Sp : array, inplace
+ *     CSR row pointer.
+ * Sj : array, inplace
+ *     CSR index array.
+ * Sx : array, inplace
+ *     CSR data array.
+ * U : array of int size = size Sx
+ *   U[k] = 1 if Sx[k] can be strongly connected, 0 otherwise
+ * strength : array float, size = num_rows
+ *
+ *
+ * Notes
+ * -----
+ * Storage for S must be preallocated.  Since S will consist of a subset
+ * of A's nonzero values, a conservative bound is to allocate the same
+ * storage for S as is used by A.
+ *
+ */
+//template<class I, class T, class F>
+/*void pairwise_strength_of_connection(const int n_row,
+                                      const double theta,
+                                      const int Ap[], const int Ap_size,
+                                      const int Aj[], const int Aj_size,
+                                      const double Ax[], const int Ax_size,
+                                      double Sx[], const int Sx_size,
+                                      char U[], const int U_size,
+                                      double strength[], const int strength_size,
+                                      int D[], const int D_size,
+                                      double rowsum[], const int rowsum_size,
+                                      double colsum[], const int colsum_size,
+                                      double absrowsum[],const int absrowsum_size,
+                                      double abscolsum[],const int abscolsum_size)
+*/
+template<class I, class T, class F>
+void pairwise_strength_of_connection(const I n_row,
+                                      const F theta,
+                                      const I Ap[], const int Ap_size,
+                                      const I Aj[], const int Aj_size,
+                                      const T Ax[], const int Ax_size,
+                                            I Sp[], const int Sp_size,
+                                            I Sj[], const int Sj_size,
+                                            T Sx[], const int Sx_size,
+                                            I U[], const int U_size,
+                                            I D[], const int D_size,
+                                            T strength[], const int strength_size)
+{
+    //Sp,Sj form a CSR representation where the i-th row contains
+    //the indices of all the strong connections from node i
+    
+  //double ktg = 2*(1 + (1/theta) );//drop threshhold
+  /*char* U = (char*)calloc(Ax_size,sizeof(char));
+  double* strength = (double*)calloc(n_row, sizeof(double));
+  int* D = (int*)calloc(n_row,sizeof(int));
+  double* rowsum = (double*)calloc(n_row,sizeof(double));
+  double* colsum = (double*)calloc(n_row,sizeof(double));
+  double* absrowsum = (double*)calloc(n_row,sizeof(double));
+  double* abscolsum = (double*)calloc(n_row,sizeof(double));
+  compute_pairwise_U_s(n_row, 1+theta, Ap, Ap_size, Aj, Aj_size, Ax, Ax_size, U, strength, D,
+      rowsum, colsum, absrowsum, abscolsum);
+  */
+  for (int i =0; i< n_row; ++i){
+    int row_start = Ap[i];
+    int row_end = Ap[i+1];
+
+    double aii = Ax[(int)D[i]];
+    Sx[(int)D[i]] = 1;
+    double strengthi = strength[i];
+    for (int kupper = row_start; kupper<row_end;++kupper){
+      int j = Aj[kupper];//column
+      
+      double strengthj = strength[j];
+    
+      int row_startj = Ap[j];
+      //int row_endj = Ap[j+1];
+
+      int klower = row_startj;
+      while((Aj[klower] < i) && (klower <D[j])){++klower;}
+
+      //double mulower = Sx[klower];
+      int resetlower = Aj[klower] != i;
+      double aji = Ax[klower] * (!resetlower);
+
+      double aij = Ax[kupper];
+      double ajj = Ax[(int)D[j]];
+
+      double mu = compute_pairwise_connectivity(aii,ajj,aij,aji,strengthi,strengthj);
+
+      double ssum = strengthi + strengthj;
+
+      Sx[kupper] = mu/ssum;
+      switch (resetlower){//only set the value if not resetlower
+        case 0:
+          Sx[klower] = mu/ssum;
+        case 1:
+          break;
+      }
+    }
+  } 
+ /* free(abscolsum);
+  free(absrowsum);
+  free(colsum);
+  free(rowsum);
+  free(D);
+  free(strength);
+  free(U);*/
+}
+
+/*
  * Compute symmetric strenth of connection.
  *
  * Compute a strength of connection matrix using the standard symmetric

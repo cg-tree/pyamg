@@ -38,6 +38,13 @@ instantiate:
     - filter_matrix_rows
 
 - types:
+    - [int, float, float]
+    - [int, double, double]
+  functions:
+    - pairwise_strength_of_connection
+    - compute_pairwise_U_s
+
+- types:
     - [int,float]
     - [int,double]
   functions:

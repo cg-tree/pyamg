@@ -256,11 +256,28 @@ def pairwise_strength_of_connection(A, theta=0.5, reciprocal=1,replacezeros=0,sm
   if A.format != 'csr':
     A = csr_array(A)
   A.sort_indices()
+  
+  mu = A.copy()
+  usize = len(A.data)
+  U = np.zeros(usize, dtype=np.int32)
+  rowcount = A.shape[0]
+  D = np.zeros(rowcount, dtype=np.int32)
+  s = np.zeros(rowcount, dtype=np.float64)
+  rowsum = np.zeros(rowcount, dtype=np.float64)
+  colsum = np.zeros(rowcount, dtype=np.float64)
+  absrowsum = np.zeros(rowcount, dtype=np.float64)
+  abscolsum = np.zeros(rowcount, dtype=np.float64)
+  amg_core.compute_pairwise_U_s(rowcount,theta,A.indptr,A.indices,A.data,U,D,s,rowsum,colsum,absrowsum,abscolsum)
+  amg_core.pairwise_strength_of_connection(A.shape[0],theta,A.indptr,A.indices,A.data,mu.indptr,mu.indices,mu.data,U,D,s)
+  return mu
+'''
+  except:
+    print("exception c impl of pairwise soc not used")
   U, s, D, notU = compute_Us( A, 1+theta )
   # 1+theta = ktg/ (ktg-2)
   ktg = 2*( (1+theta) / theta)
   return pairwise_soc(A,U,s,D,notU, ktg, replacezeros=replacezeros,smooth=smooth,reciprocal=reciprocal)
-
+'''
 
 
 def distance_strength_of_connection(A, V, theta=2.0, relative_drop=True):
