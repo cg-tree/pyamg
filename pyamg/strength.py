@@ -24,7 +24,14 @@ from .util.params import set_tol
 
 
 def compute_mu(aii,ajj,aij,aji,si,sj,reciprocal = 1):
-  
+  '''
+  despite the name of this function this is actually the reciprocal of mu.
+  The paper on pairwise aggregation states that 2 nodes form an aggregate
+  when mu is positive and minimal. However, aggregation methods expect a
+  strength of connection matrix to have large entries when nodes are 
+  strongly connected, and small/0 entries where nodes are weakly connected.
+  Hence we use the reciprocal of mu as the measure of connectivity.
+  '''  
   if (aii == 0) or (ajj==0):
     return 0
   elif (aii + ajj - si - sj) == 0:
@@ -55,6 +62,10 @@ def get_U(A,theta):
   return U
 
 def compute_Us(A, theta):
+  '''
+  Here we compute the indices in the set U and the vector of s values
+  (again from the pairwise aggregation paper)
+  '''
   index_type = 'd'
 
   s = np.empty(A.shape[0], dtype=index_type)
@@ -97,6 +108,9 @@ def compute_Us(A, theta):
 
 
 def get_csr_elem(A,i,j):
+    '''
+    this function is unused and should be removed
+    '''
     row_start = A.indptr[i]
     row_end = A.indptr[i+1]
     columns = A.indices[row_start:row_end]
@@ -112,6 +126,18 @@ def get_csr_elem(A,i,j):
 
 def pairwise_soc(A,U,s,D, notU, ktg, replacezeros = 0,smooth=0,reciprocal=1):
   '''
+  U the set of indices that may have strong connections
+  s the vector which entries in the main diagonal are compared 
+  against in order to determine which indices are in U
+  D is used to index into the data array of A to find elements on 
+    the main diagonal
+  notU is the complement of U, it is used to easily set the connection
+    values to 0 
+  ktg is the threshholding parameter used to to determine whether an
+    entry is in U, and whether two nodes are strongly connected
+  replace zeros, smooth are two options to try to match the sparsity
+   pattern and value of classical soc (only implemented in this function)
+
   soc should have sparsity of A so initialize with mu=A
   '''
   mu = A.copy()
@@ -220,6 +246,10 @@ def pairwise_soc(A,U,s,D, notU, ktg, replacezeros = 0,smooth=0,reciprocal=1):
       
 
 def pairwise_soc1(A,s,mu,theta, maximize=1, reciprocal=1, allentries=1):
+  '''
+  first pass implementation without using csr indexing
+  this function should be removed
+  '''
   U = get_U(A,theta)
 
   #for i in U:
@@ -246,15 +276,18 @@ def pairwise_soc1(A,s,mu,theta, maximize=1, reciprocal=1, allentries=1):
 
   return sparse.csr_matrix(mu)
 
-'''
-in the paper small values of mu indicate high degree of connectedness
-this library assumes strength of connection matrices use large values to indicate high degree of connectedness
-
-entries in returned matrix are reciprocal of mu as defined in algorithm 4.2 from the pairwise aggregation paper
-'''
 def pairwise_strength_of_connection(A, theta=0.5, reciprocal=1,replacezeros=0,smooth=0):
+  '''
+  in the Pairwise Aggregation paper small values of mu indicate high degree of connectedness
+  this library assumes strength of connection matrices use large values to indicate high degree of connectedness
+
+  entries in returned matrix are reciprocal of mu as defined in algorithm 4.2 from the pairwise aggregation paper
+  the parameters reciprocal, replacezeros, smooth are ignored 
+
+  '''
   if A.format != 'csr':
     A = csr_array(A)
+  #the implementation of pairwise soc expects the columns in the indices vector to be sorted per row
   A.sort_indices()
   
   mu = A.copy()

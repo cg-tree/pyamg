@@ -33,6 +33,12 @@ double compute_pairwise_connectivity(double aii,
   return (c-d)/(2*b);
 }
 
+/*
+ * Setup for Pairwise SOC
+ * U the set of indices
+ * D the indices of elements on the main diagonal
+ * s the vector of values used to determine U
+ * */
 template<class I, class T, class F>
 int compute_pairwise_U_s(const I n_row,
                                       const F theta,
@@ -146,21 +152,6 @@ int compute_pairwise_U_s(const I n_row,
  * storage for S as is used by A.
  *
  */
-//template<class I, class T, class F>
-/*void pairwise_strength_of_connection(const int n_row,
-                                      const double theta,
-                                      const int Ap[], const int Ap_size,
-                                      const int Aj[], const int Aj_size,
-                                      const double Ax[], const int Ax_size,
-                                      double Sx[], const int Sx_size,
-                                      char U[], const int U_size,
-                                      double strength[], const int strength_size,
-                                      int D[], const int D_size,
-                                      double rowsum[], const int rowsum_size,
-                                      double colsum[], const int colsum_size,
-                                      double absrowsum[],const int absrowsum_size,
-                                      double abscolsum[],const int abscolsum_size)
-*/
 template<class I, class T, class F>
 void pairwise_strength_of_connection(const I n_row,
                                       const F theta,
